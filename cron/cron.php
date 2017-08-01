@@ -11,9 +11,9 @@
  * que estén en modo AUTOMATICO en el administrador del módulo.
  */
 
-
+//----------------------------
 // CONFIGURACIÓN
-
+//----------------------------
 // Tipo de documento
 // fe = fact electrónica
 // fee = fact electrónica exenta
@@ -33,6 +33,11 @@ $CONFIG['maximo_a_procesar'] = "50";
 // ordenes anteriores, las cuales no deben facturarse
 $CONFIG['orden_mayor_a'] = "0";
 
+// Monedas aceptadas
+$CONFIG['monedasaceptadas'] = array("'CLP'");
+
+// Email en caso de errores
+$CONFIG['emailerrores'] = "email@email.com";
 
 // Mostrar errores
 error_reporting(E_ALL);
@@ -45,12 +50,39 @@ ini_set('display_errors', 1);
 // Tiempo máximo de ejecución en segundos
 set_time_limit(60*10);
 
-// PROCESO
-$GLOBALS['logfile'] = dirname(__FILE__)."/logs/".date("Y-m-d-H-i-s").".txt";
 
-function logear($texto)
+//----------------------------
+// PROCESO
+//----------------------------
+$GLOBALS['logfile'] = dirname(__FILE__)."/logs/".date("Y-m-d-H-i-s").".txt";
+$GLOBALS['errorpresente'] = false;
+
+/*
+ * $tipomensaje = "info", "alerta", "error", "exito"
+ */
+function logear($tipomensaje,$texto)
 {
     file_put_contents($GLOBALS['logfile'], $texto."\n", FILE_APPEND);
+    
+    if ($tipomensaje == "info")
+    {
+        print "INFO: ";
+    }    
+    elseif ($tipomensaje == "exito")
+    {
+        print "EXITO: ";
+    }
+    elseif ($tipomensaje == "alerta")
+    {
+        print "ALERTA: ";
+    }
+    elseif ($tipomensaje == "error")
+    {
+        print "ERROR: ";
+        $GLOBALS['errorpresente'] = true;
+    }
+    
+    
     print $texto."<br/>";
 }
 
@@ -61,7 +93,7 @@ $linkdb = mysqli_connect(DB_HOSTNAME,DB_USERNAME,DB_PASSWORD,DB_DATABASE);
 
 if ($linkdb == false)
 {
-    logear("Error conexión MYSQL ".mysqli_connect_error());
+    logear("error","Error conexión MYSQL ".mysqli_connect_error());
     exit();
 }
 
@@ -75,7 +107,7 @@ $res = mysqli_query($linkdb, $query_create);
 
 if ($res == false)
 {
-    logear("Error mysql: ".mysqli_error($linkdb));
+    logear("error","Error mysql: ".mysqli_error($linkdb));
     exit();
 }
 
@@ -94,7 +126,7 @@ $res = mysqli_query($linkdb, $query_create);
 
 if ($res == false)
 {
-    logear("Error mysql: ".mysqli_error($linkdb));
+    logear("error","Error mysql: ".mysqli_error($linkdb));
     exit();
 }
 
@@ -112,7 +144,7 @@ $res = mysqli_query($linkdb, $query_create);
 
 if ($res == false)
 {
-    logear("Error mysql: ".mysqli_error($linkdb));
+    logear("error","Error mysql: ".mysqli_error($linkdb));
     exit();
 }
 
@@ -125,7 +157,7 @@ $settingsres = mysqli_query($linkdb, $sql);
 
 if ($settingsres == false)
 {
-    logear("Error mysql: ".mysqli_error($linkdb));
+    logear("error","Error mysql: ".mysqli_error($linkdb));
     exit();
 }
 
@@ -137,7 +169,7 @@ while ($settingsrow = mysqli_fetch_assoc($settingsres))
 // Busquemos los pedidos que estén en estado completado y que tienen modo de pago en automático
 // y que no tienen un envío exitoso
 $sql = "SELECT cf.tipo, cf.rut, cf.razonsocial, cf.giro, ord.order_id, ord.currency_id,
-    payment_address_1, payment_city, telephone, email, mp.fact
+    payment_address_1, payment_city, telephone, email, mp.fact, ord.currency_value
     FROM
     ".DB_PREFIX."order ord
     INNER JOIN ".DB_PREFIX."oml_facto_mp mp
@@ -150,17 +182,18 @@ $sql = "SELECT cf.tipo, cf.rut, cf.razonsocial, cf.giro, ord.order_id, ord.curre
         mp.fact = 'auto' AND omp.order_id IS NULL
         AND ord.order_status_id IN (".implode(",",$CONFIG['estadoaceptado']).")
           AND ord.order_id > ".$CONFIG['orden_mayor_a']."
+              AND ord.currency_code IN (".implode(",",$CONFIG['monedasaceptadas']).")
             ORDER BY date_added ASC
             LIMIT ".$CONFIG['maximo_a_procesar'];
 $documentos = mysqli_query($linkdb, $sql);
 
 if ($documentos == false)
 {
-    logear("Error mysql: ".mysqli_error($linkdb));
+    logear("error","Error mysql: ".mysqli_error($linkdb));
     exit();
 }
 
-logear(mysqli_num_rows($documentos)." pedidos encontrados");
+logear("info",mysqli_num_rows($documentos)." pedidos encontrados");
 
 // Generamos los documentos
 while ($documento = mysqli_fetch_assoc($documentos))
@@ -175,7 +208,7 @@ while ($documento = mysqli_fetch_assoc($documentos))
     
     if ($shippingres == false)
     {
-        logear("Error mysql: ".mysqli_error($linkdb));
+        logear("error","Error mysql: ".mysqli_error($linkdb));
         exit();
     }
     
@@ -205,7 +238,7 @@ while ($documento = mysqli_fetch_assoc($documentos))
     
     if ($res == false)
     {
-        logear("Error mysql: ".mysqli_error($linkdb));
+        logear("error","Error mysql: ".mysqli_error($linkdb));
         exit();
     }
     
@@ -258,7 +291,7 @@ while ($documento = mysqli_fetch_assoc($documentos))
     
     if ($currencyres == false)
     {
-        logear("Error mysql: ".mysqli_error($linkdb));
+        logear("error","Error mysql: ".mysqli_error($linkdb));
         exit();
     }
     
@@ -273,7 +306,7 @@ while ($documento = mysqli_fetch_assoc($documentos))
         
     if ($itemsres == false)
     {
-        logear("Error mysql: ".mysqli_error($linkdb));
+        logear("error","Error mysql: ".mysqli_error($linkdb));
         exit();
     }
     
@@ -284,7 +317,7 @@ while ($documento = mysqli_fetch_assoc($documentos))
         $detalle['cantidad'] = (int)$item["quantity"];
         $detalle['unidad'] = "";
         $detalle['glosa'] = $item['name'];
-        $detalle['monto_unitario'] = round( $item['price'] * $currencyinfo['value'], $currencyinfo['decimal_place']);
+        $detalle['monto_unitario'] = round( $item['price'] * $documento['currency_value'], $currencyinfo['decimal_place']);
         $detalle['descuentorecargo_monto'] = 0;
         $detalle['descuentorecargo_porcentaje'] = 0;
     
@@ -303,7 +336,7 @@ while ($documento = mysqli_fetch_assoc($documentos))
     if ($tieneshipping == "1")
     {
         //GASTOS DE ENVIO
-        $gastos_de_envio = round( $valorshipping * $currencyinfo['value'], $currencyinfo['decimal_place']);
+        $gastos_de_envio = round( $valorshipping * $documento['currency_value'], $currencyinfo['decimal_place']);
         	
         if($gastos_de_envio>0) {
             $detalle = array();
@@ -328,6 +361,37 @@ while ($documento = mysqli_fetch_assoc($documentos))
             array_push($detalles, $detalle);
         }
     }
+    
+    
+    // Veamos si hay otros recargos por forma de pago
+    $sql = "SELECT value FROM ".DB_PREFIX."order_total
+    WHERE order_id = '".mysqli_real_escape_string($linkdb, $documento['order_id'])."'
+    AND code = 'payment_based_fee'";
+    $recargores = mysqli_query($linkdb, $sql);
+    
+    while ($item = mysqli_fetch_assoc($recargores))
+    {
+        $detalle = array();
+    
+        $detalle['cantidad'] = 1;
+        $detalle['unidad'] = "";
+        $detalle['glosa'] = "Recargo forma de pago";
+        $detalle['monto_unitario'] = round( $item['value'] * $documento['currency_value'], $currencyinfo['decimal_place']);
+        $detalle['descuentorecargo_monto'] = 0;
+        $detalle['descuentorecargo_porcentaje'] = 0;
+    
+        if($tipo_dte == 34 || $tipo_dte == 41) {
+            $detalle['exento_afecto'] = 0;
+            $total_exento += $detalle['cantidad'] * $detalle['monto_unitario'];
+        }
+        else {
+            $detalle['exento_afecto'] = 1;
+            $total_afecto += $detalle['cantidad'] * $detalle['monto_unitario'];
+        }
+         
+        array_push($detalles, $detalle);
+    }
+    
     
     $total_iva = round(($total_afecto * 0.19), 6);
     $total_exento = round($total_exento);
@@ -379,7 +443,14 @@ while ($documento = mysqli_fetch_assoc($documentos))
     
         $cadena_xml .= "
 							</detalles>
-    
+                            <referencias xsi:type='urn:referencias'>
+                               <referencia xsi:type='urn:referencia'>
+                                  <docreferencia_tipo xsi:type='xsd:int'>802</docreferencia_tipo>
+                                  <docreferencia_folio xsi:type='xsd:int'>".$documento['order_id']."</docreferencia_folio>
+                                  <codigo_referencia xsi:type='xsd:int'>5</codigo_referencia>
+                                  <descripcion xsi:type='xsd:string'>Num. Pedido</descripcion>
+                               </referencia>
+                            </referencias>
 							<totales xsi:type='urn:totales'>
 								<total_exento xsi:type='xsd:int'>".$total_exento."</total_exento>
 								<total_afecto xsi:type='xsd:int'>".$total_afecto."</total_afecto>
@@ -408,7 +479,7 @@ while ($documento = mysqli_fetch_assoc($documentos))
         
         if ($res == false)
         {
-            logear("Error mysql: ".mysqli_error($linkdb));
+            logear("error","Error mysql: ".mysqli_error($linkdb));
             exit();
         }
         
@@ -426,7 +497,7 @@ while ($documento = mysqli_fetch_assoc($documentos))
         	
         if ($res == false)
         {
-            logear("Error mysql: ".mysqli_error($linkdb));
+            logear("error","Error mysql: ".mysqli_error($linkdb));
             exit();
         }
         
@@ -441,11 +512,11 @@ while ($documento = mysqli_fetch_assoc($documentos))
             
             if ($res == false)
             {
-                logear("Error mysql: ".mysqli_error($linkdb));
+                logear("error","Error mysql: ".mysqli_error($linkdb));
                 exit();
             }
             
-            logear("ORDER: ".$documento['order_id']." - Ha ocurrido un error en comunicación webservice - ".$err);
+            logear("error","ORDER: ".$documento['order_id']." - Ha ocurrido un error en comunicación webservice - ".$err);
         }
         else
         {
@@ -464,7 +535,7 @@ while ($documento = mysqli_fetch_assoc($documentos))
                     exit();
                 }
                 
-                logear("ORDER: ".$documento['order_id']." - Documento generado ".$response['enlaces']['dte_pdf']." - ".$receptor_email);
+                logear("exito","ORDER: ".$documento['order_id']." - Documento generado ".$response['enlaces']['dte_pdf']." - ".$receptor_email);
             }
             else
             {
@@ -481,7 +552,7 @@ while ($documento = mysqli_fetch_assoc($documentos))
                     exit();
                 }
                 
-                logear("ORDER: ".$documento['order_id']." - Ha ocurrido un error al generar el documento - ".$response['resultado']['mensaje_error']);
+                logear("error","ORDER: ".$documento['order_id']." - Ha ocurrido un error al generar el documento - ".$response['resultado']['mensaje_error']);
             }
         }
     }
@@ -495,11 +566,20 @@ while ($documento = mysqli_fetch_assoc($documentos))
         
         if ($res == false)
         {
-            logear("Error mysql: ".mysqli_error($linkdb));
+            logear("error","Error mysql: ".mysqli_error($linkdb));
             exit();
         }
         
-        logear("ORDER: ".$documento['order_id']." - Ha ocurrido un error al generar el documento");
+        logear("error","ORDER: ".$documento['order_id']." - Ha ocurrido un error al generar el documento");
     }
+    
+}
+
+// Veamos si tenemos errores presentes
+if ($GLOBALS['errorpresente'] == true)
+{
+    $mensaje = file_get_contents($GLOBALS['logfile']);
+    
+    mail($CONFIG['emailerrores'], "Error detectado CRON Tienda", $mensaje);
     
 }
