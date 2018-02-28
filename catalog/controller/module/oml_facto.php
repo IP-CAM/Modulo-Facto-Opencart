@@ -6,8 +6,8 @@ class ControllerModuleOmlFacto extends Controller {
 	public function index() {
 		$ruta = $this->request->get['route'];
 		
-		var_dump($ruta);		
-		var_dump("MF");
+		//var_dump($ruta);		
+		//var_dump("MF");
 		
 		$data['heading_title'] = 'OML FACTO';
 		if($ruta == "checkout/checkout") {		
@@ -23,7 +23,7 @@ class ControllerModuleOmlFacto extends Controller {
 			$data['text_checkout_option'] = sprintf($this->language->get('text_checkout_option'), 1);
 			$data['text_checkout_payment_address'] = sprintf($this->language->get('text_checkout_payment_address'), 1);
 					
-			return $this->load->view('module/oml_facto', $data);
+			return $this->load->view('default/template/module/oml_facto.tpl', $data);
 		}
 		else if($ruta == "account/order/info") {
 			$datos = $this->_account_order_info();
@@ -31,7 +31,7 @@ class ControllerModuleOmlFacto extends Controller {
 				$data[$key] = $valor;
 			}
 			
-			return $this->load->view('module/oml_facto_account_order_info', $data);
+			return $this->load->view('default/template/module/oml_facto_account_order_info.tpl', $data);
 		}
 				
 	}
