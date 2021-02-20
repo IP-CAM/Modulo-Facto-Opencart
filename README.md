@@ -1,2 +1,2 @@
 # modulo-opencart
-Módulo open source para la integración de factura y boleta electrónica a Opencart utilizando Facto
+Open source module for the integration of electronic invoice and ticket to Opencart using Facto 
